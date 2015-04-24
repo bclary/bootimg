@@ -36,15 +36,13 @@ unsigned pages(unsigned page_size, unsigned chunk_size)
   return (chunk_size + page_size - 1) / page_size;
 }
 
-int write_chunk(int bootimg_fd, char *bootimg_fn, unsigned size, char *output_type, unsigned offset)
+int write_chunk(int bootimg_fd, char *output_fn, unsigned size, unsigned offset)
 {
   char *msg;
-  char output_fn[MAXNAMELEN];
   char *data;
   int fd;
   unsigned count;
 
-  sprintf(output_fn, "%s-%s", bootimg_fn, output_type);
   data = (char *)malloc(size);
   if (data == 0) {
     msg = "Unable to allocate memory";
@@ -75,10 +73,9 @@ int write_chunk(int bootimg_fd, char *bootimg_fn, unsigned size, char *output_ty
 
  fail_chunk:
   close(bootimg_fd);
-  fprintf(stderr,"error: %s %s %s %s\n",
+  fprintf(stderr,"error: %s %s %s\n",
           msg,
-          bootimg_fn,
-          output_type,
+          output_fn,
           strerror(errno));
   exit(1);
 
@@ -239,7 +236,7 @@ int main(int argc, char **argv)
     goto fail;
   }
   offset = hdr.page_size;
-  write_chunk(bootimg_fd, bootimg_fn, hdr.kernel_size, "kernel", offset);
+  write_chunk(bootimg_fd, kernel_fn, hdr.kernel_size, offset);
 
   /* ramdisk */
   if(hdr.ramdisk_size == 0) {
@@ -247,13 +244,36 @@ int main(int argc, char **argv)
     goto fail;
   }
   offset += pages(hdr.page_size, hdr.kernel_size) * hdr.page_size;
-  write_chunk(bootimg_fd, bootimg_fn, hdr.ramdisk_size, "first-ramdisk", offset);
+  sprintf(ramdisk_fn, "%s-%s", bootimg_fn, "first-ramdisk");
+  write_chunk(bootimg_fd, ramdisk_fn, hdr.ramdisk_size, offset);
 
   /* ramdisk 2 */
   if(hdr.second_size > 0) {
     offset += pages(hdr.page_size, hdr.ramdisk_size) * hdr.page_size;
-    write_chunk(bootimg_fd, bootimg_fn, hdr.second_size, "second-ramdisk", offset);
+    sprintf(second_fn, "%s-%s", bootimg_fn, "first-ramdisk");
+    write_chunk(bootimg_fd, second_fn, hdr.second_size, offset);
   }
+
+  fprintf(stderr, "To repackage the ramdisk, run pkbootimg like this:\n");
+  fprintf(stdout, "pkbootimg --kernel %s \\\n", kernel_fn);
+  fprintf(stdout, "          --kernel-addr 0x%X \\\n", hdr.kernel_addr);
+  fprintf(stdout, "          --ramdisk %s \\\n", ramdisk_fn);
+  fprintf(stdout, "          --ramdisk-addr 0x%X \\\n", hdr.ramdisk_addr);
+  if(hdr.second_size > 0) {
+	  fprintf(stdout, "          --second %s \\\n", second_fn);
+  }
+  fprintf(stdout, "          --second-addr 0x%X \\\n", hdr.second_addr);
+  fprintf(stdout, "          --tags-addr 0x%X \\\n", hdr.tags_addr);
+  fprintf(stdout, "          --pagesize %d \\\n", hdr.page_size);
+  if(strlen(hdr.name) > 0) {
+	  fprintf(stdout, "          --board %s \\\n", hdr.name);
+  }
+  if(strlen(hdr.cmdline) > 0) {
+	  fprintf(stdout, "          --cmdline \"%s\" \\\n", hdr.cmdline);
+  }
+  fprintf(stdout, "          --output newboot.img\n");
+
+  fprintf(stderr, "\nSplit successful\n");
 
   return 0;
 
